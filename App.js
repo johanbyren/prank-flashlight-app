@@ -14,7 +14,7 @@ import { BlurView } from 'expo-blur';
 import { MaterialCommunityIcons } from '@expo/vector-icons';
 import * as Linking from 'expo-linking';
 import Constants from 'expo-constants';
-import { API_URL, STRIPE_PUBLISHABLE_KEY } from './config';
+import { API_URL, STRIPE_PUBLISHABLE_KEY, SUPABASE_ANON_KEY } from './config';
 import { StripeProvider, useStripe } from './stripe';
 
 const stripeReturnURL =
@@ -104,6 +104,12 @@ function FlashlightApp() {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
+          ...(SUPABASE_ANON_KEY
+            ? {
+                apikey: SUPABASE_ANON_KEY,
+                Authorization: `Bearer ${SUPABASE_ANON_KEY}`,
+              }
+            : {}),
         },
         body: JSON.stringify({ plan }),
       });
@@ -126,7 +132,7 @@ function FlashlightApp() {
       await new Promise((resolve) => setTimeout(resolve, 350));
 
       const sheetParams = {
-        merchantDisplayName: 'Prank Flashlight',
+        merchantDisplayName: 'Candela',
         paymentIntentClientSecret: clientSecret,
         returnURL: stripeReturnURL,
         allowsDelayedPaymentMethods: false,

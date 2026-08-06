@@ -35,3 +35,6 @@ Thumbs.db
 # Logs
 logs/
 *.log
+
+# Supabase CLI cache
+supabase/.temp/

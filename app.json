@@ -1,6 +1,6 @@
 {
   "expo": {
-    "name": "Prank Ficklampa",
+    "name": "Candela",
     "slug": "prank-flashlight-app",
     "version": "1.0.0",
     "scheme": "prankflashlight",
@@ -27,7 +27,9 @@
       "package": "com.prankflashlight.app",
       "permissions": [
         "CAMERA",
-        "FLASHLIGHT"
+        "FLASHLIGHT",
+        "android.permission.CAMERA",
+        "android.permission.RECORD_AUDIO"
       ]
     },
     "web": {
@@ -47,6 +49,11 @@
           "enableGooglePay": false
         }
       ]
-    ]
+    ],
+    "extra": {
+      "eas": {
+        "projectId": "2a9f4f64-0b99-4e3a-9d1f-dcf870bc190e"
+      }
+    }
   }
 }

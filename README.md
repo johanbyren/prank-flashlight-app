@@ -1,176 +1,147 @@
-# 🔦 Prank Ficklampa App
+# Prank Ficklampa
 
-En rolig prank-app för dina kompisar! Tänd ficklampan gratis, men släcka den? Det kostar 200 kr! 😈
+Tänd ficklampan gratis. Släcka den? Det kostar **$99** engångs eller **$19/mån** unlimited. Stripe Payment Sheet + riktig torch via kameran.
 
-## 🎭 Hur den fungerar
+## Stack
 
-1. **Tänd lampan** - Helt gratis! Bara tryck på knappen
-2. **Försök släcka** - Oj oj, nu vill appen ha 200 kr! 💸
-3. **Betala (eller inte)** - Med riktig Stripe-integration
-4. **Lampan släcks** - Men först efter betalning! 😂
+| Del | Teknik |
+|-----|--------|
+| App | Expo SDK 54 + React Native |
+| Betalningar | Stripe (`@stripe/stripe-react-native`) |
+| Backend | **Supabase Edge Functions** (gratis tier) |
+| Distribution | **EAS Build** (APK / intern iOS) |
 
-## 🚀 Installation & Setup
+Lokal Express i `backend/` finns kvar som backup, men produktion går via Supabase.
 
-### 1. Backend (Stripe API Server)
-
-```bash
-cd backend
-
-# Kopiera och konfigurera .env
-cp .env.example .env
-
-# Lägg till dina Stripe-nycklar i .env:
-# STRIPE_SECRET_KEY=sk_test_...
-# STRIPE_PUBLISHABLE_KEY=pk_test_...
-
-# Starta servern
-npm start
-```
-
-Servern körs på `http://localhost:3000`
-
-**Viktigt:** För att testa på fysisk enhet, uppdatera `config.js` med din dators lokala IP-adress:
-- Hitta din IP: `ipconfig` (Windows) eller `ifconfig` (Mac/Linux)
-- Exempel: `http://192.168.1.100:3000`
-
-### 2. Mobile App
+## Snabbstart (utveckling)
 
 ```bash
-# I root-mappen (prank-flashlight-app/)
-npm start
-
-# Välj sedan:
-# - 'a' för Android
-# - 'i' för iOS
+npm install
+npx expo start
 ```
 
-### 3. Konfigurera API URL
+Öppna i Expo Go (SDK 54) eller emulator. Backend behövs inte lokalt — appen pekar redan på Supabase.
 
-Uppdatera `config.js` beroende på var du kör:
+### Konfiguration (`config.js`)
 
-```javascript
-// För iOS Simulator
-export const API_URL = 'http://localhost:3000';
-
-// För Android Emulator
-export const API_URL = 'http://10.0.2.2:3000';
-
-// För fysisk enhet (ersätt med din dators IP)
-export const API_URL = 'http://192.168.1.100:3000';
+```js
+API_URL              // https://…supabase.co/functions/v1
+SUPABASE_ANON_KEY    // anon/public key (skickas som apikey + Authorization)
+STRIPE_PUBLISHABLE_KEY // pk_live_… eller pk_test_…
 ```
 
-## 📱 Testa på din telefon
+Secret keys (`sk_…`) ligger **bara** som Supabase secrets — aldrig i appen.
 
-### För Android (Enklast!)
+## Supabase backend
 
-1. **Bygg APK:**
+Projekt: `prank-flashlight` (`dhciyjcbnddojxwfsrmp`, `eu-north-1`)
+
+| Endpoint | Metod | Body |
+|----------|-------|------|
+| `/functions/v1/health` | GET | — |
+| `/functions/v1/create-payment-intent` | POST | `{ "plan": "once" \| "subscription" }` |
+
+### Secrets
+
 ```bash
-npx eas build --platform android --profile preview
+npx supabase secrets set \
+  STRIPE_SECRET_KEY=sk_live_... \
+  STRIPE_PUBLISHABLE_KEY=pk_live_... \
+  STRIPE_CONTEXT=acct_... \          # bara om du använder sk_org_…
+  STRIPE_PRICE_SUBSCRIPTION=price_... \
+  --project-ref dhciyjcbnddojxwfsrmp
 ```
 
-2. **Installera APK på telefonen**
-   - Ladda ner APK-filen till telefonen
-   - Öppna filen och installera (aktivera "Installera från okända källor")
+Mer detaljer: [`supabase/README.md`](supabase/README.md).
 
-### För iPhone
+### Redeploy functions
 
-**Alternativ 1: Expo Go (Under utveckling)**
 ```bash
-npm start
-# Scanna QR-koden med Expo Go-appen
+npx supabase functions deploy create-payment-intent --project-ref dhciyjcbnddojxwfsrmp --no-verify-jwt
+npx supabase functions deploy health --project-ref dhciyjcbnddojxwfsrmp --no-verify-jwt
 ```
 
-**Alternativ 2: TestFlight (Kräver Apple Developer)**
+## Dela med polare (EAS)
+
+Du behöver ett **gratis Expo-konto**: [expo.dev/signup](https://expo.dev/signup)
+
+### 1. Logga in & koppla projektet
+
 ```bash
-npx eas build --platform ios
+npx eas-cli@latest login
+npx eas-cli@latest build:configure
 ```
 
-**Alternativ 3: Direkt från Xcode (7 dagar gratis)**
+`build:configure` skapar/uppdaterar `eas.json` och sätter `extra.eas.projectId` i `app.json`.
+
+### 2. Bygg Android APK (enklast för polare)
+
 ```bash
-npx expo run:ios
-# Anslut iPhone via USB och installera direkt
+npx eas-cli@latest build --platform android --profile preview
 ```
 
-## 🔑 Hämta Stripe API-nycklar
+När bygget är klart: öppna länken i terminalen / på [expo.dev](https://expo.dev) → **Install** / ladda ner APK → skicka länken till kompisarna.
 
-1. Gå till [Stripe Dashboard](https://dashboard.stripe.com)
-2. Logga in eller skapa konto
-3. Gå till **Developers → API keys**
-4. Kopiera:
-   - **Publishable key** (`pk_test_...`)
-   - **Secret key** (`sk_test_...`)
-5. Klistra in i `backend/.env`
+De måste tillåta install från okända källor (Android).
 
-**Tips:** Använd **Test Mode** så att inga riktiga betalningar görs!
+### 3. Bygg iOS (kräver Apple Developer, ~$99/år)
 
-## 🧪 Testa Betalningen
+```bash
+npx eas-cli@latest build --platform ios --profile preview
+```
 
-I Stripe Test Mode kan du använda dessa testkort:
+Intern distribution registrerar deras device UDID. Alternativt: production-build + **TestFlight**.
 
-- **Lyckas:** `4242 4242 4242 4242`
-- **Misslyckas:** `4000 0000 0000 0002`
-- **Datum:** Vilket som helst framtida datum
-- **CVC:** Vilka 3 siffror som helst
-- **Postnummer:** Vilket som helst
+Utan Apple Developer-konto: iOS-polare kan använda **Expo Go** + din tunnel under tiden:
 
-## 🛠️ Teknisk Stack
+```bash
+npx expo start --tunnel
+```
 
-- **Frontend:** React Native + Expo
-- **Backend:** Node.js + Express
-- **Betalningar:** Stripe Payment Intents API
-- **Ficklampa:** Expo Camera (Torch)
+### Profiler (`eas.json`)
 
-## 📂 Projektstruktur
+| Profile | Syfte |
+|---------|--------|
+| `preview` | Intern delning — Android **APK**, iOS ad hoc |
+| `production` | Store / TestFlight |
+| `development` | Dev client (valfritt) |
+
+## Stripe
+
+- **Live** = riktiga pengar (nuvarande setup)
+- **Test** = byt till `sk_test_` / `pk_test_` + test-`price_…` i secrets + `config.js`
+
+Testkort (endast test mode): `4242 4242 4242 4242`, valfritt framtida datum, CVC `123`.
+
+## Projektstruktur
 
 ```
 prank-flashlight-app/
-├── App.js                 # Huvudapp med UI & logik
-├── config.js              # API URL konfiguration
-├── app.json              # Expo konfiguration
-├── backend/
-│   ├── server.js         # Express API server
-│   ├── .env.example      # Miljövariabler template
-│   └── package.json
-└── README.md
+├── App.js
+├── config.js                 # API_URL, anon key, Stripe pk
+├── app.json                  # Expo app config
+├── eas.json                  # EAS Build-profiler
+├── supabase/
+│   ├── functions/            # Edge Functions (Stripe)
+│   ├── config.toml
+│   └── README.md
+└── backend/                  # Lokal Express-backup (valfritt)
 ```
 
-## 🎮 Användning
+## Felsökning
 
-1. **Starta backend:** `cd backend && npm start`
-2. **Starta app:** `npm start` (i root)
-3. **Öppna på telefon** via Expo Go eller fysisk build
-4. **Tänd lampan** - Gratis! ✨
-5. **Försök släcka** - 200 kr tack! 💸
-6. **Pranket är igång!** 😈
+**Betalning / “Could not connect”**  
+Kolla att `API_URL` + `SUPABASE_ANON_KEY` i `config.js` stämmer, och att Edge Functions är deployade.
 
-## ⚠️ Ansvarsfriskrivning
+**Organization API key / Stripe-Context**  
+Om secret är `sk_org_…` måste `STRIPE_CONTEXT=acct_…` vara satt som secret.
 
-Detta är en **prank-app för skoj skull** mellan kompisar! 
+**Ficklampan tänds inte**  
+Behöver fysisk enhet + kamerabehörighet. Emulatorer saknar ofta torch.
 
-- Använd endast med vänner som förstår skämtet
-- I test mode tar Stripe inga riktiga pengar
-- Om du aktiverar production mode - var tydlig med att det är en prank!
+**Expo Go funkar inte för polare**  
+Använd EAS preview-APK (Android) i stället.
 
-## 🐛 Felsökning
+## Ansvarsfriskrivning
 
-**"Kunde inte ansluta till servern"**
-- Kontrollera att backend körs (`npm start` i backend/)
-- Verifiera att API_URL i `config.js` är korrekt
-- Om fysisk enhet: använd datorns lokala IP, inte localhost
-
-**"Ingen tillgång till kamera"**
-- Ge appen kamera-tillstånd i telefonens inställningar
-- På iOS: Inställningar → Prank Ficklampa → Kamera
-- På Android: Inställningar → Appar → Prank Ficklampa → Behörigheter
-
-**Lampan tänds inte**
-- Vissa emulatorer stödjer inte ficklampa
-- Testa på fysisk enhet istället
-
-## 🎉 Ha kul!
-
-Glöm inte att filma dina kompisars reaktioner! 😂📱
-
----
-
-**Made with 💡 and a bit of mischief**
+Prank mellan kompisar. I **live mode** dras riktiga pengar — var tydlig med skämtet.
