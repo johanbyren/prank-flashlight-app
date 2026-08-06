@@ -3,11 +3,12 @@
     "name": "Prank Ficklampa",
     "slug": "prank-flashlight-app",
     "version": "1.0.0",
+    "scheme": "prankflashlight",
     "orientation": "portrait",
     "icon": "./assets/icon.png",
     "userInterfaceStyle": "dark",
     "splash": {
-      "image": "./assets/splash.png",
+      "image": "./assets/splash-icon.png",
       "resizeMode": "contain",
       "backgroundColor": "#000000"
     },
@@ -21,7 +22,7 @@
     "android": {
       "adaptiveIcon": {
         "backgroundColor": "#000000",
-        "foregroundImage": "./assets/adaptive-icon.png"
+        "foregroundImage": "./assets/android-icon-foreground.png"
       },
       "package": "com.prankflashlight.app",
       "permissions": [
@@ -37,6 +38,13 @@
         "expo-camera",
         {
           "cameraPermission": "Tillåt denna app att använda kameran för ficklampan."
+        }
+      ],
+      [
+        "@stripe/stripe-react-native",
+        {
+          "merchantIdentifier": "merchant.com.prankflashlight",
+          "enableGooglePay": false
         }
       ]
     ]

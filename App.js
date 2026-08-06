@@ -6,112 +6,91 @@ import {
   TouchableOpacity,
   Alert,
   Platform,
-  Animated,
-  Dimensions,
+  Modal,
+  Pressable,
 } from 'react-native';
-import { Camera } from 'expo-camera';
-import { StripeProvider, useStripe } from '@stripe/stripe-react-native';
-import { LinearGradient } from 'expo-linear-gradient';
+import { CameraView, useCameraPermissions } from 'expo-camera';
 import { BlurView } from 'expo-blur';
-import { API_URL } from './config';
+import { MaterialCommunityIcons } from '@expo/vector-icons';
+import * as Linking from 'expo-linking';
+import Constants from 'expo-constants';
+import { API_URL, STRIPE_PUBLISHABLE_KEY } from './config';
+import { StripeProvider, useStripe } from './stripe';
 
-const { width, height } = Dimensions.get('window');
+const stripeReturnURL =
+  Constants.appOwnership === 'expo'
+    ? Linking.createURL('/--/stripe-redirect')
+    : Linking.createURL('stripe-redirect');
 
 function FlashlightApp() {
-  const [hasPermission, setHasPermission] = useState(null);
+  const [permission, requestPermission] = useCameraPermissions();
   const [isFlashlightOn, setIsFlashlightOn] = useState(false);
-  const [publishableKey, setPublishableKey] = useState('');
+  const [hasUnlimitedAccess, setHasUnlimitedAccess] = useState(false);
+  const [showPaywall, setShowPaywall] = useState(false);
   const { initPaymentSheet, presentPaymentSheet } = useStripe();
   const [loading, setLoading] = useState(false);
-  const glowAnimation = useState(new Animated.Value(0))[0];
 
   useEffect(() => {
-    (async () => {
-      const { status } = await Camera.requestCameraPermissionsAsync();
-      setHasPermission(status === 'granted');
-    })();
-  }, []);
-
-  useEffect(() => {
-    if (isFlashlightOn) {
-      Animated.loop(
-        Animated.sequence([
-          Animated.timing(glowAnimation, {
-            toValue: 1,
-            duration: 1500,
-            useNativeDriver: true,
-          }),
-          Animated.timing(glowAnimation, {
-            toValue: 0,
-            duration: 1500,
-            useNativeDriver: true,
-          }),
-        ])
-      ).start();
-    } else {
-      glowAnimation.setValue(0);
+    if (permission && !permission.granted && permission.canAskAgain) {
+      requestPermission();
     }
-  }, [isFlashlightOn]);
+  }, [permission]);
 
-  const turnOnFlashlight = async () => {
+  const turnOnFlashlight = () => {
     if (!isFlashlightOn) {
       setIsFlashlightOn(true);
-      await Camera.toggleTorchAsync(true);
     }
   };
 
-  const turnOffFlashlight = async () => {
-    if (isFlashlightOn) {
-      // PRANK TIME! 💸
-      Alert.alert(
-        '🔦 Släck ficklampa',
-        'För att släcka ficklampan behöver du betala en liten avgift på 200 kr 😈',
-        [
-          {
-            text: 'Avbryt',
-            style: 'cancel',
-          },
-          {
-            text: 'Betala 200 kr',
-            onPress: initializePayment,
-          },
-        ]
-      );
+  const requestTurnOff = () => {
+    if (!isFlashlightOn) return;
+
+    if (hasUnlimitedAccess) {
+      setIsFlashlightOn(false);
+      return;
     }
+
+    setShowPaywall(true);
   };
 
-  const initializePayment = async () => {
+  const completeTurnOff = ({ unlimited = false } = {}) => {
+    if (unlimited) {
+      setHasUnlimitedAccess(true);
+    }
+    setIsFlashlightOn(false);
+    setShowPaywall(false);
+  };
+
+  const initializePayment = async (plan) => {
     setLoading(true);
-    
-    // DEMO MODE - Testa UI utan backend
+    setShowPaywall(false);
+
+    // DEMO MODE — UI test without Stripe
     if (API_URL === 'DEMO') {
       setLoading(false);
+      const isSubscription = plan === 'subscription';
       Alert.alert(
-        '🎭 DEMO MODE',
-        'Detta är demo-läge för att testa UI:n!\n\nI riktigt läge skulle Stripe Payment Sheet öppnas här.\n\nVill du "betala" och släcka lampan?',
+        'Demo Mode',
+        isSubscription
+          ? 'In a real build, Stripe would start a $19/month subscription here.\n\nUnlock unlimited on/off now?'
+          : 'In a real build, Stripe would charge $99 here.\n\nTurn the flashlight off now?',
         [
           {
-            text: 'Avbryt',
+            text: 'Cancel',
             style: 'cancel',
             onPress: () => {
-              Alert.alert('Betalning avbruten', 'Lampan är fortfarande på! 😈');
-            }
+              Alert.alert('Payment canceled', 'The flashlight is still on.');
+            },
           },
           {
-            text: 'Ja, "betala"',
-            onPress: async () => {
+            text: isSubscription ? 'Subscribe' : 'Pay $99',
+            onPress: () => {
+              completeTurnOff({ unlimited: isSubscription });
               Alert.alert(
-                '💰 "Betalning" mottagen!',
-                'Tack för dina "pengar"! Lampan släcks nu. 😂\n\n(I riktigt läge skulle 200 kr tas via Stripe)',
-                [
-                  {
-                    text: 'OK',
-                    onPress: async () => {
-                      await Camera.toggleTorchAsync(false);
-                      setIsFlashlightOn(false);
-                    },
-                  },
-                ]
+                'Payment received',
+                isSubscription
+                  ? 'Unlimited on/off unlocked. Thanks for the money.'
+                  : 'Thanks for your money. Flashlight is off.'
               );
             },
           },
@@ -119,331 +98,403 @@ function FlashlightApp() {
       );
       return;
     }
-    
+
     try {
-      // Hämta payment intent från backend
       const response = await fetch(`${API_URL}/create-payment-intent`, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
         },
+        body: JSON.stringify({ plan }),
       });
 
-      const { clientSecret, publishableKey } = await response.json();
-      setPublishableKey(publishableKey);
-
-      // Initiera Stripe Payment Sheet
-      const { error } = await initPaymentSheet({
-        merchantDisplayName: 'Prank Flashlight AB',
-        paymentIntentClientSecret: clientSecret,
-        defaultBillingDetails: {
-          name: 'Din Kompis',
-        },
-      });
-
-      if (error) {
-        Alert.alert('Fel', error.message);
+      const data = await response.json();
+      if (!response.ok) {
+        Alert.alert('Payment error', data.error || 'Payment failed');
         setLoading(false);
         return;
       }
 
-      setLoading(false);
-      // Visa betalnings-sheet
-      openPaymentSheet();
-    } catch (error) {
-      Alert.alert('Fel', 'Kunde inte ansluta till servern. Är backend igång?');
-      setLoading(false);
-    }
-  };
+      const { clientSecret, customerId, ephemeralKey } = data;
+      if (!clientSecret) {
+        Alert.alert('Payment error', 'No client secret returned from server.');
+        setLoading(false);
+        return;
+      }
 
-  const openPaymentSheet = async () => {
-    const { error } = await presentPaymentSheet();
+      // Let the paywall modal finish closing before presenting Stripe UI
+      await new Promise((resolve) => setTimeout(resolve, 350));
 
-    if (error) {
-      Alert.alert('Betalning avbruten', 'Lampan är fortfarande på! 😈');
-    } else {
-      // Betalning lyckades! Släck lampan
+      const sheetParams = {
+        merchantDisplayName: 'Prank Flashlight',
+        paymentIntentClientSecret: clientSecret,
+        returnURL: stripeReturnURL,
+        allowsDelayedPaymentMethods: false,
+        defaultBillingDetails: {
+          name: 'Friend',
+        },
+      };
+
+      // Subscriptions need customer + ephemeral key for Payment Sheet
+      if (plan === 'subscription' && customerId && ephemeralKey) {
+        sheetParams.customerId = customerId;
+        sheetParams.customerEphemeralKeySecret = ephemeralKey;
+      }
+
+      const { error: initError } = await initPaymentSheet(sheetParams);
+
+      if (initError) {
+        console.error('initPaymentSheet error', initError);
+        Alert.alert(
+          'Stripe init failed',
+          initError.message || JSON.stringify(initError)
+        );
+        setLoading(false);
+        return;
+      }
+
+      const { error: presentError } = await presentPaymentSheet();
+      setLoading(false);
+
+      if (presentError) {
+        console.error('presentPaymentSheet error', presentError);
+        if (presentError.code === 'Canceled') {
+          Alert.alert('Payment canceled', 'The flashlight is still on.');
+        } else {
+          Alert.alert(
+            'Stripe error',
+            presentError.message || presentError.code || 'Could not open payment sheet'
+          );
+        }
+        return;
+      }
+
+      completeTurnOff({ unlimited: plan === 'subscription' });
       Alert.alert(
-        '💰 Betalning mottagen!',
-        'Tack för dina pengar! Lampan släcks nu. 😂',
-        [
-          {
-            text: 'OK',
-            onPress: async () => {
-              await Camera.toggleTorchAsync(false);
-              setIsFlashlightOn(false);
-            },
-          },
-        ]
+        'Payment received',
+        plan === 'subscription'
+          ? 'Unlimited on/off unlocked. Thanks for the money.'
+          : 'Thanks for your money. Flashlight is off.'
       );
+    } catch (error) {
+      console.error('initializePayment error', error);
+      Alert.alert(
+        'Error',
+        error?.message || 'Could not connect to the server. Is the backend running?'
+      );
+      setLoading(false);
     }
   };
 
-  if (hasPermission === null) {
+  if (!permission) {
     return (
       <View style={styles.container}>
-        <Text style={styles.loadingText}>Begär kamera-tillstånd...</Text>
+        <Text style={styles.loadingText}>Requesting camera access...</Text>
       </View>
     );
   }
 
-  if (hasPermission === false) {
+  if (!permission.granted) {
     return (
       <View style={styles.container}>
-        <Text style={styles.errorText}>Ingen tillgång till kamera</Text>
+        <Text style={styles.errorText}>No camera access</Text>
         <Text style={styles.infoText}>
-          Denna app behöver kamera-tillstånd för att kunna använda ficklampan
+          This app needs camera permission to control the flashlight.
         </Text>
+        <TouchableOpacity style={styles.permissionButton} onPress={requestPermission}>
+          <Text style={styles.permissionButtonText}>Allow Camera</Text>
+        </TouchableOpacity>
       </View>
     );
   }
-
-  const glowOpacity = glowAnimation.interpolate({
-    inputRange: [0, 1],
-    outputRange: [0.3, 0.8],
-  });
 
   return (
-    <LinearGradient
-      colors={isFlashlightOn ? ['#1a1a1a', '#2d2d2d', '#1a1a1a'] : ['#000000', '#1a1a1a', '#000000']}
-      style={styles.container}
-    >
+    <View style={styles.container}>
+      {Platform.OS !== 'web' && (
+        <CameraView
+          style={styles.hiddenCamera}
+          facing="back"
+          enableTorch={isFlashlightOn}
+        />
+      )}
+
       <View style={styles.content}>
-        {/* Flashlight Icon */}
-        <View style={styles.iconContainer}>
-          <Animated.View
-            style={[
-              styles.glowOuter,
-              isFlashlightOn && {
-                opacity: glowOpacity,
-                transform: [
-                  {
-                    scale: glowAnimation.interpolate({
-                      inputRange: [0, 1],
-                      outputRange: [1, 1.2],
-                    }),
-                  },
-                ],
-              },
-            ]}
-          />
-          <View style={[styles.flashlightIcon, isFlashlightOn && styles.flashlightIconOn]}>
-            <View style={styles.flashlightBody}>
-              <View style={[styles.flashlightTop, isFlashlightOn && styles.flashlightTopOn]} />
+        <View
+          style={[
+            styles.controlRing,
+            isFlashlightOn && styles.controlRingOn,
+          ]}
+        >
+          {isFlashlightOn ? (
+            <View style={styles.controlButtonOn}>
+              <MaterialCommunityIcons
+                name="flashlight"
+                size={72}
+                color="#1c1c1e"
+              />
             </View>
-          </View>
+          ) : (
+            <BlurView intensity={40} tint="dark" style={styles.controlButtonOff}>
+              <MaterialCommunityIcons
+                name="flashlight-off"
+                size={72}
+                color="#f2f2f7"
+              />
+            </BlurView>
+          )}
         </View>
 
-        {/* Status Text */}
-        <Text style={styles.statusText}>
-          {isFlashlightOn ? 'TÄND' : 'SLÄCKT'}
-        </Text>
-
-        {/* Buttons Container */}
         <View style={styles.buttonsContainer}>
-          {/* ON Button */}
           <TouchableOpacity
             style={[
-              styles.controlButton,
-              isFlashlightOn && styles.controlButtonActive,
+              styles.actionButton,
+              isFlashlightOn && styles.actionButtonActive,
             ]}
             onPress={turnOnFlashlight}
-            disabled={isFlashlightOn}
+            disabled={isFlashlightOn || loading}
             activeOpacity={0.7}
           >
-            <BlurView intensity={80} tint="dark" style={styles.buttonBlur}>
-              <View style={styles.buttonContent}>
-                <Text style={styles.buttonLabel}>ON</Text>
-                <Text style={styles.buttonSubtext}>Gratis</Text>
-              </View>
+            <BlurView intensity={50} tint="dark" style={styles.actionButtonBlur}>
+              <Text style={styles.actionButtonLabel}>ON</Text>
             </BlurView>
           </TouchableOpacity>
 
-          {/* OFF Button */}
           <TouchableOpacity
             style={[
-              styles.controlButton,
-              !isFlashlightOn && styles.controlButtonActive,
+              styles.actionButton,
+              !isFlashlightOn && styles.actionButtonActive,
             ]}
-            onPress={turnOffFlashlight}
+            onPress={requestTurnOff}
             disabled={!isFlashlightOn || loading}
             activeOpacity={0.7}
           >
-            <BlurView intensity={80} tint="dark" style={styles.buttonBlur}>
-              <View style={styles.buttonContent}>
-                <Text style={styles.buttonLabel}>OFF</Text>
-                <Text style={styles.buttonSubtext}>
-                  {loading ? 'Laddar...' : '200 kr'}
-                </Text>
-              </View>
+            <BlurView intensity={50} tint="dark" style={styles.actionButtonBlur}>
+              <Text style={styles.actionButtonLabel}>
+                {loading ? '...' : 'OFF'}
+              </Text>
             </BlurView>
           </TouchableOpacity>
         </View>
-
-        {/* Subtle hint */}
-        {isFlashlightOn && (
-          <View style={styles.hintContainer}>
-            <Text style={styles.hintText}>
-              💡 Lampan lyser starkt
-            </Text>
-          </View>
-        )}
       </View>
-    </LinearGradient>
+
+      <Modal
+        visible={showPaywall}
+        transparent
+        animationType="fade"
+        onRequestClose={() => setShowPaywall(false)}
+      >
+        <Pressable style={styles.paywallBackdrop} onPress={() => setShowPaywall(false)}>
+          <Pressable style={styles.paywallCard} onPress={() => {}}>
+            <Text style={styles.paywallTitle}>Turn Flashlight Off</Text>
+            <Text style={styles.paywallSubtitle}>
+              Choose how you want to turn it off.
+            </Text>
+
+            <TouchableOpacity
+              style={styles.planButton}
+              onPress={() => initializePayment('once')}
+              disabled={loading}
+            >
+              <View style={styles.planTextWrap}>
+                <Text style={styles.planTitle}>Turn off once</Text>
+                <Text style={styles.planDescription}>One-time payment</Text>
+              </View>
+              <Text style={styles.planPrice}>$99</Text>
+            </TouchableOpacity>
+
+            <TouchableOpacity
+              style={[styles.planButton, styles.planButtonSecondary]}
+              onPress={() => initializePayment('subscription')}
+              disabled={loading}
+            >
+              <View style={styles.planTextWrap}>
+                <Text style={styles.planTitle}>Unlimited on/off</Text>
+                <Text style={styles.planDescription}>Subscription</Text>
+              </View>
+              <Text style={styles.planPrice}>$19/mo</Text>
+            </TouchableOpacity>
+
+            <TouchableOpacity
+              style={styles.cancelButton}
+              onPress={() => setShowPaywall(false)}
+              disabled={loading}
+            >
+              <Text style={styles.cancelButtonText}>Cancel</Text>
+            </TouchableOpacity>
+          </Pressable>
+        </Pressable>
+      </Modal>
+    </View>
   );
 }
 
 export default function App() {
   return (
     <StripeProvider
-      publishableKey="pk_test_placeholder"
+      publishableKey={STRIPE_PUBLISHABLE_KEY}
       merchantIdentifier="merchant.com.prankflashlight"
+      urlScheme={
+        Constants.appOwnership === 'expo'
+          ? Linking.createURL('/--/').split(':')[0]
+          : 'prankflashlight'
+      }
     >
       <FlashlightApp />
     </StripeProvider>
   );
 }
 
+const CONTROL_SIZE = 168;
+
 const styles = StyleSheet.create({
   container: {
     flex: 1,
+    backgroundColor: '#000000',
+  },
+  hiddenCamera: {
+    width: 1,
+    height: 1,
+    opacity: 0,
+    position: 'absolute',
   },
   content: {
     flex: 1,
     alignItems: 'center',
     justifyContent: 'center',
-    paddingHorizontal: 30,
   },
-  
-  // Flashlight Icon Styles
-  iconContainer: {
-    marginBottom: 60,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  glowOuter: {
-    position: 'absolute',
-    width: 200,
-    height: 200,
-    borderRadius: 100,
-    backgroundColor: '#FFE066',
-    opacity: 0,
-  },
-  flashlightIcon: {
-    width: 120,
-    height: 140,
-    alignItems: 'center',
-    justifyContent: 'flex-end',
-  },
-  flashlightBody: {
-    width: 60,
-    height: 100,
-    backgroundColor: '#4a4a4a',
-    borderRadius: 10,
-    alignItems: 'center',
-    justifyContent: 'flex-start',
+  controlRing: {
+    width: CONTROL_SIZE,
+    height: CONTROL_SIZE,
+    borderRadius: CONTROL_SIZE / 2,
     overflow: 'hidden',
+    backgroundColor: 'rgba(120, 120, 128, 0.28)',
   },
-  flashlightTop: {
-    width: 60,
-    height: 30,
-    backgroundColor: '#5a5a5a',
-    borderTopLeftRadius: 10,
-    borderTopRightRadius: 10,
-  },
-  flashlightTopOn: {
-    backgroundColor: '#FFE066',
-    shadowColor: '#FFE066',
-    shadowOffset: { width: 0, height: 0 },
-    shadowOpacity: 1,
-    shadowRadius: 20,
-    elevation: 10,
-  },
-  flashlightIconOn: {
-    shadowColor: '#FFE066',
-    shadowOffset: { width: 0, height: 0 },
-    shadowOpacity: 0.6,
-    shadowRadius: 30,
-    elevation: 10,
-  },
-  
-  // Status Text
-  statusText: {
-    fontSize: 18,
-    fontWeight: '600',
-    color: '#ffffff',
-    letterSpacing: 3,
-    marginBottom: 50,
-    opacity: 0.7,
-  },
-  
-  // Buttons Container
-  buttonsContainer: {
-    flexDirection: 'row',
-    gap: 20,
-    marginBottom: 30,
-  },
-  
-  // Control Buttons
-  controlButton: {
-    width: 150,
-    height: 150,
-    borderRadius: 75,
-    overflow: 'hidden',
-    opacity: 0.6,
-    borderWidth: 2,
-    borderColor: 'rgba(255, 255, 255, 0.1)',
-  },
-  controlButtonActive: {
-    opacity: 1,
-    borderColor: 'rgba(255, 255, 255, 0.3)',
+  controlRingOn: {
+    backgroundColor: '#ffffff',
     shadowColor: '#ffffff',
     shadowOffset: { width: 0, height: 0 },
-    shadowOpacity: 0.3,
-    shadowRadius: 10,
-    elevation: 8,
+    shadowOpacity: 0.45,
+    shadowRadius: 28,
+    elevation: 12,
   },
-  buttonBlur: {
+  controlButtonOff: {
     flex: 1,
     alignItems: 'center',
     justifyContent: 'center',
   },
-  buttonContent: {
+  controlButtonOn: {
+    flex: 1,
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: '#ffffff',
+  },
+  buttonsContainer: {
+    flexDirection: 'row',
+    gap: 20,
+    marginTop: 56,
+  },
+  actionButton: {
+    width: 120,
+    height: 120,
+    borderRadius: 60,
+    overflow: 'hidden',
+    opacity: 0.55,
+    borderWidth: 1.5,
+    borderColor: 'rgba(255, 255, 255, 0.12)',
+  },
+  actionButtonActive: {
+    opacity: 1,
+    borderColor: 'rgba(255, 255, 255, 0.35)',
+    shadowColor: '#ffffff',
+    shadowOffset: { width: 0, height: 0 },
+    shadowOpacity: 0.25,
+    shadowRadius: 10,
+    elevation: 6,
+  },
+  actionButtonBlur: {
+    flex: 1,
     alignItems: 'center',
     justifyContent: 'center',
   },
-  buttonLabel: {
-    fontSize: 28,
-    fontWeight: 'bold',
+  actionButtonLabel: {
+    fontSize: 26,
+    fontWeight: '700',
     color: '#ffffff',
-    marginBottom: 8,
     letterSpacing: 2,
   },
-  buttonSubtext: {
-    fontSize: 14,
+  paywallBackdrop: {
+    flex: 1,
+    backgroundColor: 'rgba(0, 0, 0, 0.55)',
+    justifyContent: 'center',
+    paddingHorizontal: 24,
+  },
+  paywallCard: {
+    backgroundColor: '#1c1c1e',
+    borderRadius: 20,
+    padding: 22,
+  },
+  paywallTitle: {
     color: '#ffffff',
-    opacity: 0.8,
+    fontSize: 22,
+    fontWeight: '700',
+    textAlign: 'center',
+    marginBottom: 8,
+  },
+  paywallSubtitle: {
+    color: 'rgba(255, 255, 255, 0.65)',
+    fontSize: 15,
+    textAlign: 'center',
+    marginBottom: 22,
+    lineHeight: 20,
+  },
+  planButton: {
+    backgroundColor: '#0a84ff',
+    borderRadius: 14,
+    paddingVertical: 16,
+    paddingHorizontal: 16,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    marginBottom: 12,
+  },
+  planButtonSecondary: {
+    backgroundColor: 'rgba(120, 120, 128, 0.36)',
+  },
+  planTextWrap: {
+    flex: 1,
+    paddingRight: 12,
+  },
+  planTitle: {
+    color: '#ffffff',
+    fontSize: 17,
+    fontWeight: '600',
+  },
+  planDescription: {
+    color: 'rgba(255, 255, 255, 0.7)',
+    fontSize: 13,
+    marginTop: 2,
+  },
+  planPrice: {
+    color: '#ffffff',
+    fontSize: 17,
+    fontWeight: '700',
+  },
+  cancelButton: {
+    paddingVertical: 14,
+    alignItems: 'center',
+  },
+  cancelButtonText: {
+    color: 'rgba(255, 255, 255, 0.7)',
+    fontSize: 17,
     fontWeight: '500',
   },
-  
-  // Hint
-  hintContainer: {
-    marginTop: 20,
-    paddingHorizontal: 20,
-    paddingVertical: 12,
-    backgroundColor: 'rgba(255, 255, 255, 0.1)',
-    borderRadius: 20,
-  },
-  hintText: {
-    color: '#ffffff',
-    fontSize: 14,
-    opacity: 0.8,
-  },
-  
-  // Loading & Error States
   loadingText: {
     color: '#ffffff',
     fontSize: 16,
+    textAlign: 'center',
+    marginTop: 'auto',
+    marginBottom: 'auto',
+    alignSelf: 'center',
   },
   errorText: {
     fontSize: 18,
@@ -451,6 +502,9 @@ const styles = StyleSheet.create({
     marginBottom: 10,
     textAlign: 'center',
     fontWeight: '600',
+    marginTop: 'auto',
+    alignSelf: 'center',
+    paddingHorizontal: 40,
   },
   infoText: {
     fontSize: 14,
@@ -459,5 +513,20 @@ const styles = StyleSheet.create({
     color: '#ffffff',
     opacity: 0.7,
     lineHeight: 20,
+    alignSelf: 'center',
+  },
+  permissionButton: {
+    marginTop: 24,
+    marginBottom: 'auto',
+    backgroundColor: 'rgba(120, 120, 128, 0.36)',
+    paddingHorizontal: 28,
+    paddingVertical: 14,
+    borderRadius: 22,
+    alignSelf: 'center',
+  },
+  permissionButtonText: {
+    color: '#ffffff',
+    fontSize: 17,
+    fontWeight: '600',
   },
 });

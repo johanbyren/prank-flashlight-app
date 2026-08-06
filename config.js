@@ -1,7 +1,8 @@
-// Uppdatera denna med din backend URL när du kör servern
-// För lokal utveckling på fysisk enhet, använd din dators lokala IP (t.ex. http://192.168.1.x:3000)
-// För Android emulator, använd http://10.0.2.2:3000
-// För iOS simulator, använd http://localhost:3000
-// För Cloud Agent testing, sätt till 'DEMO' för att testa UI utan backend
+// Backend URL
+// Physical device: your computer's LAN IP (e.g. http://192.168.1.x:3000)
+// iOS simulator: http://localhost:3000
+// DEMO: test UI without backend / Stripe
+export const API_URL = 'DEMO';
 
-export const API_URL = 'DEMO'; // Sätt till 'DEMO' för att testa UI, eller din backend URL
+// Stripe publishable key — set locally (never commit sk_ secret keys)
+export const STRIPE_PUBLISHABLE_KEY = 'pk_test_placeholder';
