@@ -1,9 +1,9 @@
 {
   "expo": {
     "name": "Candela",
-    "slug": "prank-flashlight-app",
+    "slug": "candela",
     "version": "1.0.0",
-    "scheme": "prankflashlight",
+    "scheme": "candela",
     "orientation": "portrait",
     "icon": "./assets/icon.png",
     "userInterfaceStyle": "dark",
@@ -52,8 +52,9 @@
     ],
     "extra": {
       "eas": {
-        "projectId": "2a9f4f64-0b99-4e3a-9d1f-dcf870bc190e"
+        "projectId": "db2f7db6-78e2-4c61-b455-18d63cc6815b"
       }
-    }
+    },
+    "owner": "xburrex"
   }
 }
