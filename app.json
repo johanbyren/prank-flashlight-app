@@ -1,0 +1,44 @@
+{
+  "expo": {
+    "name": "Prank Ficklampa",
+    "slug": "prank-flashlight-app",
+    "version": "1.0.0",
+    "orientation": "portrait",
+    "icon": "./assets/icon.png",
+    "userInterfaceStyle": "light",
+    "splash": {
+      "image": "./assets/splash.png",
+      "resizeMode": "contain",
+      "backgroundColor": "#1a1a2e"
+    },
+    "ios": {
+      "supportsTablet": true,
+      "bundleIdentifier": "com.prankflashlight.app",
+      "infoPlist": {
+        "NSCameraUsageDescription": "Denna app behöver tillgång till kameran för att kunna använda ficklampan."
+      }
+    },
+    "android": {
+      "adaptiveIcon": {
+        "backgroundColor": "#1a1a2e",
+        "foregroundImage": "./assets/adaptive-icon.png"
+      },
+      "package": "com.prankflashlight.app",
+      "permissions": [
+        "CAMERA",
+        "FLASHLIGHT"
+      ]
+    },
+    "web": {
+      "favicon": "./assets/favicon.png"
+    },
+    "plugins": [
+      [
+        "expo-camera",
+        {
+          "cameraPermission": "Tillåt denna app att använda kameran för ficklampan."
+        }
+      ]
+    ]
+  }
+}
