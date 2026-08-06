@@ -38,8 +38,7 @@
         {
           "cameraPermission": "Tillåt denna app att använda kameran för ficklampan."
         }
-      ],
-      "expo-linear-gradient"
+      ]
     ]
   }
 }

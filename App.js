@@ -82,6 +82,44 @@ function FlashlightApp() {
 
   const initializePayment = async () => {
     setLoading(true);
+    
+    // DEMO MODE - Testa UI utan backend
+    if (API_URL === 'DEMO') {
+      setLoading(false);
+      Alert.alert(
+        '🎭 DEMO MODE',
+        'Detta är demo-läge för att testa UI:n!\n\nI riktigt läge skulle Stripe Payment Sheet öppnas här.\n\nVill du "betala" och släcka lampan?',
+        [
+          {
+            text: 'Avbryt',
+            style: 'cancel',
+            onPress: () => {
+              Alert.alert('Betalning avbruten', 'Lampan är fortfarande på! 😈');
+            }
+          },
+          {
+            text: 'Ja, "betala"',
+            onPress: async () => {
+              Alert.alert(
+                '💰 "Betalning" mottagen!',
+                'Tack för dina "pengar"! Lampan släcks nu. 😂\n\n(I riktigt läge skulle 200 kr tas via Stripe)',
+                [
+                  {
+                    text: 'OK',
+                    onPress: async () => {
+                      await Camera.toggleTorchAsync(false);
+                      setIsFlashlightOn(false);
+                    },
+                  },
+                ]
+              );
+            },
+          },
+        ]
+      );
+      return;
+    }
+    
     try {
       // Hämta payment intent från backend
       const response = await fetch(`${API_URL}/create-payment-intent`, {
