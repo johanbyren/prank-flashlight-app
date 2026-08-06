@@ -5,7 +5,9 @@
   "dependencies": {
     "@stripe/stripe-react-native": "^0.73.0",
     "expo": "~57.0.10",
+    "expo-blur": "^57.0.2",
     "expo-camera": "^57.0.3",
+    "expo-linear-gradient": "^57.0.1",
     "expo-status-bar": "~57.0.1",
     "react": "19.2.3",
     "react-native": "0.86.2"
