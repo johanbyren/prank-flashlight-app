@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import {
   StyleSheet,
   Text,
@@ -8,6 +8,7 @@ import {
   Platform,
   Modal,
   Pressable,
+  ActivityIndicator,
 } from 'react-native';
 import { CameraView, useCameraPermissions } from 'expo-camera';
 import { BlurView } from 'expo-blur';
@@ -29,6 +30,8 @@ function FlashlightApp() {
   const [showPaywall, setShowPaywall] = useState(false);
   const { initPaymentSheet, presentPaymentSheet } = useStripe();
   const [loading, setLoading] = useState(false);
+  // Present Stripe only after the paywall Modal has fully dismissed (iOS).
+  const presentAfterCloseRef = useRef(null);
 
   useEffect(() => {
     if (permission && !permission.granted && permission.canAskAgain) {
@@ -61,13 +64,62 @@ function FlashlightApp() {
     setShowPaywall(false);
   };
 
+  const runPaymentSheet = async (plan) => {
+    try {
+      const { error: presentError } = await presentPaymentSheet();
+      setLoading(false);
+
+      if (presentError) {
+        if (presentError.code === 'Canceled') {
+          Alert.alert('Payment canceled', 'The flashlight is still on.');
+          return;
+        }
+        console.error('presentPaymentSheet error', presentError);
+        Alert.alert(
+          'Stripe error',
+          presentError.message ||
+            presentError.code ||
+            'Could not open payment sheet'
+        );
+        return;
+      }
+
+      completeTurnOff({ unlimited: plan === 'subscription' });
+      Alert.alert(
+        'Payment received',
+        plan === 'subscription'
+          ? 'Unlimited on/off unlocked. Thanks for the money.'
+          : 'Thanks for your money. Flashlight is off.'
+      );
+    } catch (error) {
+      console.error('presentPaymentSheet threw', error);
+      setLoading(false);
+      Alert.alert(
+        'Error',
+        error?.message || 'Could not open payment sheet.'
+      );
+    }
+  };
+
+  const closePaywallThenPresent = (plan) => {
+    presentAfterCloseRef.current = () => runPaymentSheet(plan);
+    setShowPaywall(false);
+
+    // Fallback if Modal onDismiss never fires (seen in some Expo Go builds)
+    setTimeout(() => {
+      const present = presentAfterCloseRef.current;
+      presentAfterCloseRef.current = null;
+      present?.();
+    }, Platform.OS === 'ios' ? 700 : 400);
+  };
+
   const initializePayment = async (plan) => {
     setLoading(true);
-    setShowPaywall(false);
 
     // DEMO MODE — UI test without Stripe
     if (API_URL === 'DEMO') {
       setLoading(false);
+      setShowPaywall(false);
       const isSubscription = plan === 'subscription';
       Alert.alert(
         'Demo Mode',
@@ -78,9 +130,6 @@ function FlashlightApp() {
           {
             text: 'Cancel',
             style: 'cancel',
-            onPress: () => {
-              Alert.alert('Payment canceled', 'The flashlight is still on.');
-            },
           },
           {
             text: isSubscription ? 'Subscribe' : 'Pay $99',
@@ -128,9 +177,6 @@ function FlashlightApp() {
         return;
       }
 
-      // Let the paywall modal finish closing before presenting Stripe UI
-      await new Promise((resolve) => setTimeout(resolve, 350));
-
       const sheetParams = {
         merchantDisplayName: 'Candela',
         paymentIntentClientSecret: clientSecret,
@@ -159,29 +205,8 @@ function FlashlightApp() {
         return;
       }
 
-      const { error: presentError } = await presentPaymentSheet();
-      setLoading(false);
-
-      if (presentError) {
-        console.error('presentPaymentSheet error', presentError);
-        if (presentError.code === 'Canceled') {
-          Alert.alert('Payment canceled', 'The flashlight is still on.');
-        } else {
-          Alert.alert(
-            'Stripe error',
-            presentError.message || presentError.code || 'Could not open payment sheet'
-          );
-        }
-        return;
-      }
-
-      completeTurnOff({ unlimited: plan === 'subscription' });
-      Alert.alert(
-        'Payment received',
-        plan === 'subscription'
-          ? 'Unlimited on/off unlocked. Thanks for the money.'
-          : 'Thanks for your money. Flashlight is off.'
-      );
+      // Must wait until RN Modal is gone — otherwise Stripe auto-cancels on iOS
+      closePaywallThenPresent(plan);
     } catch (error) {
       console.error('initializePayment error', error);
       Alert.alert(
@@ -287,49 +312,75 @@ function FlashlightApp() {
         visible={showPaywall}
         transparent
         animationType="fade"
-        onRequestClose={() => setShowPaywall(false)}
+        onRequestClose={() => {
+          if (!loading) setShowPaywall(false);
+        }}
+        onDismiss={() => {
+          const present = presentAfterCloseRef.current;
+          presentAfterCloseRef.current = null;
+          present?.();
+        }}
       >
-        <Pressable style={styles.paywallBackdrop} onPress={() => setShowPaywall(false)}>
+        <Pressable
+          style={styles.paywallBackdrop}
+          onPress={() => {
+            if (!loading) setShowPaywall(false);
+          }}
+        >
           <Pressable style={styles.paywallCard} onPress={() => {}}>
             <Text style={styles.paywallTitle}>Turn Flashlight Off</Text>
             <Text style={styles.paywallSubtitle}>
-              Choose how you want to turn it off.
+              {loading
+                ? 'Opening secure payment…'
+                : 'Choose how you want to turn it off.'}
             </Text>
 
-            <TouchableOpacity
-              style={styles.planButton}
-              onPress={() => initializePayment('once')}
-              disabled={loading}
-            >
-              <View style={styles.planTextWrap}>
-                <Text style={styles.planTitle}>Turn off once</Text>
-                <Text style={styles.planDescription}>One-time payment</Text>
+            {loading ? (
+              <View style={styles.paywallLoading}>
+                <ActivityIndicator size="large" color="#FFE066" />
               </View>
-              <Text style={styles.planPrice}>$99</Text>
-            </TouchableOpacity>
+            ) : (
+              <>
+                <TouchableOpacity
+                  style={styles.planButton}
+                  onPress={() => initializePayment('once')}
+                >
+                  <View style={styles.planTextWrap}>
+                    <Text style={styles.planTitle}>Turn off once</Text>
+                    <Text style={styles.planDescription}>One-time payment</Text>
+                  </View>
+                  <Text style={styles.planPrice}>$99</Text>
+                </TouchableOpacity>
 
-            <TouchableOpacity
-              style={[styles.planButton, styles.planButtonSecondary]}
-              onPress={() => initializePayment('subscription')}
-              disabled={loading}
-            >
-              <View style={styles.planTextWrap}>
-                <Text style={styles.planTitle}>Unlimited on/off</Text>
-                <Text style={styles.planDescription}>Subscription</Text>
-              </View>
-              <Text style={styles.planPrice}>$19/mo</Text>
-            </TouchableOpacity>
+                <TouchableOpacity
+                  style={[styles.planButton, styles.planButtonSecondary]}
+                  onPress={() => initializePayment('subscription')}
+                >
+                  <View style={styles.planTextWrap}>
+                    <Text style={styles.planTitle}>Unlimited on/off</Text>
+                    <Text style={styles.planDescription}>Subscription</Text>
+                  </View>
+                  <Text style={styles.planPrice}>$19/mo</Text>
+                </TouchableOpacity>
 
-            <TouchableOpacity
-              style={styles.cancelButton}
-              onPress={() => setShowPaywall(false)}
-              disabled={loading}
-            >
-              <Text style={styles.cancelButtonText}>Cancel</Text>
-            </TouchableOpacity>
+                <TouchableOpacity
+                  style={styles.cancelButton}
+                  onPress={() => setShowPaywall(false)}
+                >
+                  <Text style={styles.cancelButtonText}>Cancel</Text>
+                </TouchableOpacity>
+              </>
+            )}
           </Pressable>
         </Pressable>
       </Modal>
+
+      {loading && !showPaywall ? (
+        <View style={styles.loadingOverlay} pointerEvents="none">
+          <ActivityIndicator size="large" color="#FFE066" />
+          <Text style={styles.loadingOverlayText}>Opening payment…</Text>
+        </View>
+      ) : null}
     </View>
   );
 }
@@ -452,6 +503,24 @@ const styles = StyleSheet.create({
     textAlign: 'center',
     marginBottom: 22,
     lineHeight: 20,
+  },
+  paywallLoading: {
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingVertical: 36,
+  },
+  loadingOverlay: {
+    ...StyleSheet.absoluteFillObject,
+    backgroundColor: 'rgba(0,0,0,0.55)',
+    alignItems: 'center',
+    justifyContent: 'center',
+    zIndex: 50,
+  },
+  loadingOverlayText: {
+    marginTop: 14,
+    color: '#FFFFFF',
+    fontSize: 15,
+    fontWeight: '500',
   },
   planButton: {
     backgroundColor: '#0a84ff',
