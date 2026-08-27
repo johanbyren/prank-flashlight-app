@@ -1,4 +1,4 @@
-# Prank Ficklampa
+# Candela
 
 Tänd ficklampan gratis. Släcka den? Det kostar **$99** engångs eller **$19/mån** unlimited. Stripe Payment Sheet + riktig torch via kameran.
 

@@ -83,7 +83,7 @@ app.post('/create-payment-intent', async (req, res) => {
       }
 
       const customer = await stripe.customers.create({
-        metadata: { app: 'prank-flashlight' },
+        metadata: { app: 'candela' },
       });
 
       const ephemeralKey = await stripe.ephemeralKeys.create(
@@ -102,8 +102,8 @@ app.post('/create-payment-intent', async (req, res) => {
           'latest_invoice.payment_intent',
         ],
         metadata: {
-          product: 'flashlight_unlimited',
-          app: 'prank-flashlight',
+          product: 'candela_unlimited',
+          app: 'candela',
           timestamp,
         },
       });
@@ -145,10 +145,11 @@ app.post('/create-payment-intent', async (req, res) => {
     const paymentIntent = await stripe.paymentIntents.create({
       amount: 9900, // $99.00
       currency: 'usd',
-      description: 'Turn flashlight off',
+      description: 'Candela',
+      statement_descriptor: 'CANDELA',
       metadata: {
-        product: 'flashlight_off_once',
-        app: 'prank-flashlight',
+        product: 'candela_once',
+        app: 'candela',
         timestamp,
       },
       automatic_payment_methods: {
@@ -172,7 +173,7 @@ app.get('/health', (req, res) => {
   const mode = DEMO_MODE ? 'DEMO' : IS_LIVE_MODE ? 'LIVE' : 'TEST';
   res.json({
     status: 'ok',
-    message: 'Prank Flashlight API is running!',
+    message: 'Candela API is running.',
     mode,
     organizationKey: IS_ORG_KEY,
     hasStripeContext: Boolean(stripeContext),
@@ -213,7 +214,7 @@ app.post('/refund-payment', async (req, res) => {
 });
 
 app.listen(PORT, '0.0.0.0', () => {
-  console.log(`🚀 Prank Flashlight API running on port ${PORT}`);
+  console.log(`Candela API running on port ${PORT}`);
   console.log(
     `💡 Mode: ${
       DEMO_MODE

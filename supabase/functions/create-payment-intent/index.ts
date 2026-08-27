@@ -79,7 +79,7 @@ Deno.serve(async (req) => {
       }
 
       const customer = await stripe.customers.create({
-        metadata: { app: "prank-flashlight" },
+        metadata: { app: "candela" },
       });
 
       const ephemeralKey = await stripe.ephemeralKeys.create(
@@ -97,8 +97,8 @@ Deno.serve(async (req) => {
           "latest_invoice.payment_intent",
         ],
         metadata: {
-          product: "flashlight_unlimited",
-          app: "prank-flashlight",
+          product: "candela_unlimited",
+          app: "candela",
           timestamp,
         },
       });
@@ -136,10 +136,11 @@ Deno.serve(async (req) => {
     const paymentIntent = await stripe.paymentIntents.create({
       amount: 9900,
       currency: "usd",
-      description: "Turn flashlight off",
+      description: "Candela",
+      statement_descriptor: "CANDELA",
       metadata: {
-        product: "flashlight_off_once",
-        app: "prank-flashlight",
+        product: "candela_once",
+        app: "candela",
         timestamp,
       },
       automatic_payment_methods: { enabled: true },

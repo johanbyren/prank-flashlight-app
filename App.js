@@ -230,7 +230,7 @@ function FlashlightApp() {
       <View style={styles.container}>
         <Text style={styles.errorText}>No camera access</Text>
         <Text style={styles.infoText}>
-          This app needs camera permission to control the flashlight.
+          This app needs camera permission to control the light.
         </Text>
         <TouchableOpacity style={styles.permissionButton} onPress={requestPermission}>
           <Text style={styles.permissionButtonText}>Allow Camera</Text>
@@ -389,11 +389,11 @@ export default function App() {
   return (
     <StripeProvider
       publishableKey={STRIPE_PUBLISHABLE_KEY}
-      merchantIdentifier="merchant.com.prankflashlight"
+      merchantIdentifier="merchant.com.elvagroup.candela"
       urlScheme={
         Constants.appOwnership === 'expo'
           ? Linking.createURL('/--/').split(':')[0]
-          : 'prankflashlight'
+          : 'candela'
       }
     >
       <FlashlightApp />

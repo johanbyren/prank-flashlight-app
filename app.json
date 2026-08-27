@@ -14,9 +14,12 @@
     },
     "ios": {
       "supportsTablet": true,
-      "bundleIdentifier": "com.prankflashlight.app",
+      "bundleIdentifier": "com.elvagroup.candela",
+      "config": {
+        "usesNonExemptEncryption": false
+      },
       "infoPlist": {
-        "NSCameraUsageDescription": "Denna app behöver tillgång till kameran för att kunna använda ficklampan."
+        "NSCameraUsageDescription": "Candela uses the camera to control the light."
       }
     },
     "android": {
@@ -24,7 +27,7 @@
         "backgroundColor": "#000000",
         "foregroundImage": "./assets/android-icon-foreground.png"
       },
-      "package": "com.prankflashlight.app",
+      "package": "com.elvagroup.candela",
       "permissions": [
         "CAMERA",
         "FLASHLIGHT",
@@ -39,13 +42,13 @@
       [
         "expo-camera",
         {
-          "cameraPermission": "Tillåt denna app att använda kameran för ficklampan."
+          "cameraPermission": "Candela uses the camera to control the light."
         }
       ],
       [
         "@stripe/stripe-react-native",
         {
-          "merchantIdentifier": "merchant.com.prankflashlight",
+          "merchantIdentifier": "merchant.com.elvagroup.candela",
           "enableGooglePay": false
         }
       ]

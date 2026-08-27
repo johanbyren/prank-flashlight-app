@@ -17,7 +17,7 @@ Deno.serve((_req) => {
   return new Response(
     JSON.stringify({
       status: "ok",
-      message: "Prank Flashlight API is running on Supabase Edge Functions!",
+      message: "Candela API is running.",
       mode,
     }),
     {
