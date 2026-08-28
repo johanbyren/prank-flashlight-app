@@ -24,6 +24,7 @@
   "submit": {
     "production": {
       "ios": {
+        "ascAppId": "6805913867",
         "companyName": "Elva Group AB",
         "appName": "Candela"
       }

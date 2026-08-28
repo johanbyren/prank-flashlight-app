@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useRef } from 'react';
+import React, { useState, useRef } from 'react';
 import {
   StyleSheet,
   Text,
@@ -10,38 +10,83 @@ import {
   Pressable,
   ActivityIndicator,
 } from 'react-native';
-import { CameraView, useCameraPermissions } from 'expo-camera';
-import { BlurView } from 'expo-blur';
 import { MaterialCommunityIcons } from '@expo/vector-icons';
+import { Camera } from 'expo-camera';
 import * as Linking from 'expo-linking';
 import Constants from 'expo-constants';
 import { API_URL, STRIPE_PUBLISHABLE_KEY, SUPABASE_ANON_KEY } from './config';
-import { StripeProvider, useStripe } from './stripe';
+import TorchHost from './TorchHost';
 
 const stripeReturnURL =
   Constants.appOwnership === 'expo'
     ? Linking.createURL('/--/stripe-redirect')
     : Linking.createURL('stripe-redirect');
 
+class ErrorBoundary extends React.Component {
+  constructor(props) {
+    super(props);
+    this.state = { error: null };
+  }
+
+  static getDerivedStateFromError(error) {
+    return { error };
+  }
+
+  render() {
+    if (this.state.error) {
+      return (
+        <View style={styles.container}>
+          <Text style={styles.errorText}>Something went wrong</Text>
+          <Text style={styles.infoText}>
+            {String(this.state.error?.message || this.state.error)}
+          </Text>
+        </View>
+      );
+    }
+    return this.props.children;
+  }
+}
+
+let stripeModule = null;
+
+async function getStripe() {
+  if (stripeModule) return stripeModule;
+  const stripe = require('@stripe/stripe-react-native');
+  await stripe.initStripe({
+    publishableKey: STRIPE_PUBLISHABLE_KEY,
+    urlScheme:
+      Constants.appOwnership === 'expo'
+        ? Linking.createURL('/--/').split(':')[0]
+        : 'candela',
+  });
+  stripeModule = stripe;
+  return stripe;
+}
+
 function FlashlightApp() {
-  const [permission, requestPermission] = useCameraPermissions();
   const [isFlashlightOn, setIsFlashlightOn] = useState(false);
   const [hasUnlimitedAccess, setHasUnlimitedAccess] = useState(false);
   const [showPaywall, setShowPaywall] = useState(false);
-  const { initPaymentSheet, presentPaymentSheet } = useStripe();
   const [loading, setLoading] = useState(false);
+  const [cameraError, setCameraError] = useState(null);
   // Present Stripe only after the paywall Modal has fully dismissed (iOS).
   const presentAfterCloseRef = useRef(null);
 
-  useEffect(() => {
-    if (permission && !permission.granted && permission.canAskAgain) {
-      requestPermission();
-    }
-  }, [permission]);
+  const turnOnFlashlight = async () => {
+    if (isFlashlightOn) return;
 
-  const turnOnFlashlight = () => {
-    if (!isFlashlightOn) {
+    try {
+      const result = await Camera.requestCameraPermissionsAsync();
+      if (!result?.granted) {
+        Alert.alert(
+          'Camera access needed',
+          'Candela uses the camera to control the light.'
+        );
+        return;
+      }
       setIsFlashlightOn(true);
+    } catch (error) {
+      setCameraError(error?.message || String(error));
     }
   };
 
@@ -66,7 +111,8 @@ function FlashlightApp() {
 
   const runPaymentSheet = async (plan) => {
     try {
-      const { error: presentError } = await presentPaymentSheet();
+      const stripe = await getStripe();
+      const { error: presentError } = await stripe.presentPaymentSheet();
       setLoading(false);
 
       if (presentError) {
@@ -193,7 +239,8 @@ function FlashlightApp() {
         sheetParams.customerEphemeralKeySecret = ephemeralKey;
       }
 
-      const { error: initError } = await initPaymentSheet(sheetParams);
+      const stripe = await getStripe();
+      const { error: initError } = await stripe.initPaymentSheet(sheetParams);
 
       if (initError) {
         console.error('initPaymentSheet error', initError);
@@ -217,39 +264,28 @@ function FlashlightApp() {
     }
   };
 
-  if (!permission) {
-    return (
-      <View style={styles.container}>
-        <Text style={styles.loadingText}>Requesting camera access...</Text>
-      </View>
-    );
-  }
-
-  if (!permission.granted) {
-    return (
-      <View style={styles.container}>
-        <Text style={styles.errorText}>No camera access</Text>
-        <Text style={styles.infoText}>
-          This app needs camera permission to control the light.
-        </Text>
-        <TouchableOpacity style={styles.permissionButton} onPress={requestPermission}>
-          <Text style={styles.permissionButtonText}>Allow Camera</Text>
-        </TouchableOpacity>
-      </View>
-    );
-  }
-
   return (
     <View style={styles.container}>
-      {Platform.OS !== 'web' && (
-        <CameraView
-          style={styles.hiddenCamera}
-          facing="back"
-          enableTorch={isFlashlightOn}
+      {Platform.OS !== 'web' && isFlashlightOn ? (
+        <TorchHost
+          onMountError={(event) => {
+            const message =
+              event?.nativeEvent?.message ||
+              event?.message ||
+              'Camera failed to start.';
+            console.error('CameraView onMountError', event);
+            setCameraError(message);
+            setIsFlashlightOn(false);
+          }}
         />
-      )}
+      ) : null}
+
+      {cameraError ? (
+        <Text style={styles.cameraErrorText}>{cameraError}</Text>
+      ) : null}
 
       <View style={styles.content}>
+        <Text style={styles.brandMark}>Candela</Text>
         <View
           style={[
             styles.controlRing,
@@ -265,13 +301,13 @@ function FlashlightApp() {
               />
             </View>
           ) : (
-            <BlurView intensity={40} tint="dark" style={styles.controlButtonOff}>
+            <View style={styles.controlButtonOff}>
               <MaterialCommunityIcons
                 name="flashlight-off"
                 size={72}
                 color="#f2f2f7"
               />
-            </BlurView>
+            </View>
           )}
         </View>
 
@@ -285,9 +321,9 @@ function FlashlightApp() {
             disabled={isFlashlightOn || loading}
             activeOpacity={0.7}
           >
-            <BlurView intensity={50} tint="dark" style={styles.actionButtonBlur}>
+            <View style={styles.actionButtonBlur}>
               <Text style={styles.actionButtonLabel}>ON</Text>
-            </BlurView>
+            </View>
           </TouchableOpacity>
 
           <TouchableOpacity
@@ -299,11 +335,11 @@ function FlashlightApp() {
             disabled={!isFlashlightOn || loading}
             activeOpacity={0.7}
           >
-            <BlurView intensity={50} tint="dark" style={styles.actionButtonBlur}>
+            <View style={styles.actionButtonBlur}>
               <Text style={styles.actionButtonLabel}>
                 {loading ? '...' : 'OFF'}
               </Text>
-            </BlurView>
+            </View>
           </TouchableOpacity>
         </View>
       </View>
@@ -387,17 +423,9 @@ function FlashlightApp() {
 
 export default function App() {
   return (
-    <StripeProvider
-      publishableKey={STRIPE_PUBLISHABLE_KEY}
-      merchantIdentifier="merchant.com.elvagroup.candela"
-      urlScheme={
-        Constants.appOwnership === 'expo'
-          ? Linking.createURL('/--/').split(':')[0]
-          : 'candela'
-      }
-    >
+    <ErrorBoundary>
       <FlashlightApp />
-    </StripeProvider>
+    </ErrorBoundary>
   );
 }
 
@@ -411,13 +439,39 @@ const styles = StyleSheet.create({
   hiddenCamera: {
     width: 1,
     height: 1,
-    opacity: 0,
+  },
+  torchHost: {
     position: 'absolute',
+    width: 1,
+    height: 1,
+    top: 0,
+    left: 0,
+    opacity: 0,
+    overflow: 'hidden',
+    zIndex: -1,
+  },
+  cameraErrorText: {
+    color: '#ff6b6b',
+    fontSize: 13,
+    textAlign: 'center',
+    paddingHorizontal: 24,
+    paddingTop: 64,
   },
   content: {
     flex: 1,
     alignItems: 'center',
     justifyContent: 'center',
+    backgroundColor: '#000000',
+    zIndex: 1,
+  },
+  brandMark: {
+    position: 'absolute',
+    top: 72,
+    color: '#ffffff',
+    fontSize: 15,
+    letterSpacing: 4,
+    fontWeight: '600',
+    opacity: 0.55,
   },
   controlRing: {
     width: CONTROL_SIZE,
